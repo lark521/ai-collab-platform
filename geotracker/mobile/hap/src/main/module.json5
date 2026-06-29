@@ -1,0 +1,113 @@
+{
+  "name": "geotracker",
+  "version": "1.0.0",
+  "description": "GeoTracker - Real-time location tracking application",
+  "main": "EntryAbility.ets",
+  "devices": [
+    "HarmonyOS"
+  ],
+  "compileSdkVersion": "5.0.0.0",
+  "compatibleSdkVersion": "5.0.0.0",
+  "bundle": {
+    "icon": "media/app_icon.png",
+    "label": "GeoTracker",
+    "type": "app",
+    "codeSourceHashFiles": ["codeSourceHash.json"]
+  },
+  "app": {
+    "bundleName": "com.geotracker.app",
+    "vendor": "geotracker",
+    "signingConfigs": [],
+    "products": [
+      {
+        "name": "default",
+        "signingConfig": "default",
+        "compatibleSdkVersion": "5.0.0.0",
+        "runtimeOS": "HarmonyOS",
+        "distributionType": "Free"
+      }
+    ]
+  },
+  "module": {
+    "name": "geotracker",
+    "type": "entry",
+    "description": "$string:module_desc",
+    "mainElement": "IndexAbility",
+    "deviceTypes": ["phone", "tablet"],
+    "deliveryWithInstall": true,
+    "installationFree": false,
+    "abilities": [
+      {
+        "name": "IndexAbility",
+        "srcEntry": "./ets/pages/Index.ets",
+        "description": "$string:IndexAbility_desc",
+        "icon": "$media:icon",
+        "label": "$string:IndexAbility_label",
+        "startWindowIcon": "$media:icon",
+        "startWindowBackground": "$color:start_window_background",
+        "exported": true,
+        "skills": [
+          {
+            "entities": ["entity.system.home"],
+            "actions": ["action.system.home"]
+          }
+        ]
+      }
+    ],
+    "reqPermissions": [
+      {
+        "name": "@ohos.permission.INTERNET",
+        "reason": "需要访问网络以上报位置数据",
+        "usedScene": {
+          "abilities": ["IndexAbility"],
+          "when": "always"
+        }
+      },
+      {
+        "name": "@ohos.permission.APPROXIMATELY_LOCATION",
+        "reason": "需要获取近似位置信息",
+        "usedScene": {
+          "abilities": ["IndexAbility"],
+          "when": "always"
+        }
+      },
+      {
+        "name": "@ohos.permission.LOCATION",
+        "reason": "需要获取精确位置信息",
+        "usedScene": {
+          "abilities": ["IndexAbility"],
+          "when": "always"
+        }
+      },
+      {
+        "name": "@ohos.permission.BackgroundLocation",
+        "reason": "需要在后台获取位置信息",
+        "usedScene": {
+          "abilities": ["IndexAbility"],
+          "when": "always"
+        }
+      },
+      {
+        "name": "@ohos.permission.Monitor.Location",
+        "reason": "需要监控位置变化",
+        "usedScene": {
+          "abilities": ["IndexAbility"],
+          "when": "always"
+        }
+      },
+      {
+        "name": "@ohos.permission.KEEP_Alive",
+        "reason": "保持应用后台运行",
+        "usedScene": {
+          "abilities": ["IndexAbility"],
+          "when": "always"
+        }
+      }
+    ],
+    "requestPermissions": [
+      {
+        "name": "ohos.permission.INTERNET"
+      }
+    ]
+  }
+}

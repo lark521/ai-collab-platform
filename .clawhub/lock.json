@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "skills": {
+    "find-skills-for-clawhub": {
+      "version": "1.0.0",
+      "installedAt": 1778758718697
+    },
+    "skill-vetter": {
+      "version": "1.0.0",
+      "installedAt": 1778797655567
+    },
+    "openclaw-auto-updater": {
+      "version": "1.0.0",
+      "installedAt": 1778908052928
+    },
+    "word-docx": {
+      "version": "1.0.2",
+      "installedAt": 1778908446158
+    },
+    "excel-xlsx": {
+      "version": "1.0.2",
+      "installedAt": 1778908458991
+    },
+    "skill-creator": {
+      "version": "0.1.0",
+      "installedAt": 1778908473333
+    },
+    "proactive-agent": {
+      "version": "3.1.0",
+      "installedAt": 1780710509696
+    }
+  }
+}

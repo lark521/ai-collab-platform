@@ -1,0 +1,20 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "实时位置追踪应用"
+    },
+    {
+      "name": "IndexAbility_desc",
+      "value": "GeoTracker主界面"
+    },
+    {
+      "name": "IndexAbility_label",
+      "value": "GeoTracker"
+    },
+    {
+      "name": "start_window_background",
+      "value": "#0F172A"
+    }
+  ]
+}
