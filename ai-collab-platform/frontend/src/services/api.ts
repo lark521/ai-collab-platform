@@ -35,6 +35,7 @@ export const messagesApi = {
   byTask: (taskId: string, limit = 100) => api.get(`/messages/task/${taskId}?limit=${limit}`),
   byAgent: (agentId: string, limit = 100) => api.get(`/messages/agent/${agentId}?limit=${limit}`),
   all: (limit = 200) => api.get(`/messages?limit=${limit}`),
+  create: (data: any) => api.post('/messages', data),
 };
 
 // --- Audit ---

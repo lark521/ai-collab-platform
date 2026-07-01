@@ -41,7 +41,12 @@ export const useAgents = () => {
 
   const addAgent = async (data: AgentFormData) => {
     try {
-      const res = await agentsApi.create(data);
+      // Filter out empty strings to avoid backend validation errors
+      const payload: any = { name: data.name, type: data.type };
+      if (data.remoteUrl && data.remoteUrl.trim()) {
+        payload.remoteUrl = data.remoteUrl.trim();
+      }
+      const res = await agentsApi.create(payload);
       await fetchAgents();
       return res.data;
     } catch (e) {

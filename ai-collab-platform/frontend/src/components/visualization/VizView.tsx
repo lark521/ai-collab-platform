@@ -20,212 +20,290 @@ interface AgentNode {
   name: string;
   type: string;
   status: string;
-  x?: number;
-  y?: number;
+  isConnected?: boolean;
+  lastHeartbeat?: string;
 }
+
+const TYPE_EMOJI: Record<string, string> = {
+  openclaw: '🦝',
+  hermes: '🦙',
+  custom: '🤖',
+};
 
 export default function VisualizationView() {
   const socket = useSocket();
+  const graphRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<HTMLDivElement>(null);
-  const [chart, setChart] = useState<any>(null);
+  const [graphChart, setGraphChart] = useState<any>(null);
+  const [flowChart, setFlowChart] = useState<any>(null);
   const [agents, setAgents] = useState<AgentNode[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [selectedTask, setSelectedTask] = useState<string>('all');
 
   useEffect(() => {
-    // 初始化图表
+    // Init charts
+    if (graphRef.current) {
+      const g = echarts.init(graphRef.current, 'dark');
+      setGraphChart(g);
+    }
     if (chartRef.current) {
-      const echartsInstance = echarts.init(chartRef.current, 'dark');
-      setChart(echartsInstance);
+      const f = echarts.init(chartRef.current, 'dark');
+      setFlowChart(f);
     }
 
-    // 加载数据
+    // Load data
     agentsApi.list().then((res: any) => {
-      const agentsData = res.data;
-      setAgents(agentsData);
-      updateChart(agentsData, []);
+      const data = res.data || [];
+      setAgents(data);
+      updateCharts(data, []);
     });
 
     messagesApi.all(200).then((res: any) => {
-      setMessages(res.data);
+      setMessages(res.data || []);
     });
 
-    // 实时消息
     socket.on('message:new', (msg: Message) => {
       setMessages(prev => [...prev.slice(-200), msg]);
     });
 
     socket.on('agent:status', () => {
-      agentsApi.list().then((res: any) => {
-        setAgents(res.data);
-      });
+      agentsApi.list().then((res: any) => setAgents(res.data || []));
     });
+
+    // Resize handler
+    const handleResize = () => {
+      graphChart?.resize();
+      flowChart?.resize();
+    };
+    window.addEventListener('resize', handleResize);
 
     return () => {
       socket.off('message:new');
       socket.off('agent:status');
-      chart?.dispose();
+      graphChart?.dispose();
+      flowChart?.dispose();
+      window.removeEventListener('resize', handleResize);
     };
   }, [socket]);
 
-  const updateChart = (agents: AgentNode[], msgs: Message[]) => {
-    if (!chart) return;
-
-    // 计算节点位置（环形布局）
-    const nodes = agents.map((agent, i) => {
-      const angle = (2 * Math.PI * i) / agents.length - Math.PI / 2;
-      const radius = 250;
-      return {
-        ...agent,
-        x: 400 + radius * Math.cos(angle),
-        y: 300 + radius * Math.sin(angle),
-      };
-    });
-
-    // 构建边（消息流向）
-    const edges: any[] = [];
-    const agentMsgCounts: Record<string, any> = {};
-    msgs.forEach(msg => {
-      if (msg.receiverId && msg.senderId !== msg.receiverId) {
-        const key = `${msg.senderId}->${msg.receiverId}`;
-        if (!agentMsgCounts[key]) {
-          agentMsgCounts[key] = { source: msg.senderId, target: msg.receiverId, value: 0 };
-        }
-        agentMsgCounts[key].value++;
-      }
-    });
-    Object.values(agentMsgCounts).forEach(e => edges.push(e));
-
-    const option = {
-      backgroundColor: 'transparent',
-      tooltip: {
-        trigger: 'item',
-        formatter: (params: any) => {
-          if (params.dataType === 'node') {
-            return `${params.data.name}<br/>类型: ${params.data.type}<br/>状态: ${params.data.status}`;
-          }
-          return `${params.data.source} → ${params.data.target}<br/>消息数: ${params.data.value}`;
-        },
-      },
-      series: [
-        {
-          type: 'graph',
-          layout: 'none',
-          symbolSize: 60,
-          roam: true,
+  const updateCharts = (agentsData: AgentNode[], msgs: Message[]) => {
+    // Graph chart
+    if (graphChart) {
+      const nodes = agentsData.map((agent, i) => {
+        const angle = (2 * Math.PI * i) / Math.max(agentsData.length, 1) - Math.PI / 2;
+        const radius = Math.min(agentsData.length > 8 ? 280 : 200, agentsData.length * 30);
+        return {
+          id: agent.id,
+          name: agent.name,
+          value: agent.type,
+          symbolSize: Math.max(35, Math.min(55, 30 + (agent.status === 'online' || agent.isConnected ? 10 : 0))),
+          x: 350 + radius * Math.cos(angle),
+          y: 280 + radius * Math.sin(angle),
+          status: agent.status,
+          isConnected: agent.isConnected,
+          lastHeartbeat: agent.lastHeartbeat,
+          itemStyle: {
+            color: (agent.status === 'online' || agent.isConnected)
+              ? 'rgba(16, 185, 129, 0.2)'
+              : 'rgba(239, 68, 68, 0.2)',
+            borderColor: (agent.status === 'online' || agent.isConnected)
+              ? '#10b981'
+              : '#ef4444',
+            borderWidth: 2,
+            shadowColor: (agent.status === 'online' || agent.isConnected)
+              ? 'rgba(16, 185, 129, 0.4)'
+              : 'rgba(239, 68, 68, 0.4)',
+            shadowBlur: 12,
+          },
           label: {
             show: true,
-            fontSize: 12,
-            color: '#fff',
+            fontSize: 11,
+            color: '#e2e8f0',
+            fontWeight: 500,
           },
-          edgeSymbol: ['arrow', 'none'],
-          edgeSymbolSize: [8, 4],
-          data: nodes.map(n => ({
-            ...n,
-            itemStyle: {
-              color: n.status === 'online' ? '#22c55e' : '#ef4444',
-              borderColor: n.status === 'online' ? '#4ade80' : '#f87171',
-              borderWidth: 2,
-            },
-          })),
-          links: edges.map(e => ({
-            source: e.source,
-            target: e.target,
-            lineStyle: {
-              color: '#6366f1',
-              width: 2,
-              curveness: 0.3,
-            },
-          })),
-          lineStyle: {
-            color: '#6366f1',
-            curveness: 0.3,
-          },
-        },
-        {
-          // 消息流时间线
-          type: 'line',
-          xAxisIndex: 1,
-          yAxisIndex: 1,
-          data: msgs.slice(-100).map(m => new Date(m.timestamp).getTime()),
-          smooth: true,
-          symbol: 'none',
-          lineStyle: { color: '#8b5cf6', width: 2 },
-          areaStyle: {
-            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-              { offset: 0, color: 'rgba(139,92,246,0.3)' },
-              { offset: 1, color: 'rgba(139,92,246,0)' },
-            ]),
-          },
-        },
-      ],
-      grid: [{ left: 0, right: '10%', top: 0, bottom: 0 }],
-    };
+        };
+      });
 
-    chart.setOption(option);
+      const edges: any[] = [];
+      const edgeMap: Record<string, number> = {};
+      msgs.forEach(msg => {
+        if (msg.receiverId && msg.senderId !== msg.receiverId) {
+          const key = `${msg.senderId}->${msg.receiverId}`;
+          edgeMap[key] = (edgeMap[key] || 0) + 1;
+        }
+      });
+      Object.entries(edgeMap).forEach(([key, value]) => {
+        const [source, target] = key.split('->');
+        edges.push({ source, target, value, lineStyle: {
+          color: 'rgba(99, 102, 241, 0.4)',
+          width: Math.min(1 + value * 0.5, 4),
+          curveness: 0.3,
+          type: value > 3 ? 'solid' : 'dashed',
+        }});
+      });
+
+      graphChart.setOption({
+        backgroundColor: 'transparent',
+        tooltip: {
+          trigger: 'item',
+          backgroundColor: 'rgba(15, 23, 42, 0.95)',
+          borderColor: 'rgba(99, 102, 241, 0.3)',
+          textStyle: { color: '#e2e8f0', fontSize: 12 },
+          formatter: (params: any) => {
+            if (params.dataType === 'node') {
+              const isOnline = params.data.status === 'online' || params.data.isConnected;
+              return `<b>${params.data.name}</b><br/>类型: ${params.data.value}<br/>状态: ${isOnline ? '🟢 在线' : '🔴 离线'}<br/>ID: ${params.data.id.slice(0, 8)}...`;
+            }
+            return `${params.data.source} → ${params.data.target}<br/>消息数: ${params.data.value}`;
+          },
+        },
+        series: [{
+          type: 'graph',
+          layout: 'none',
+          roam: true,
+          draggable: true,
+          focusNodeAdjacency: true,
+          data: nodes,
+          links: edges,
+          edgeSymbol: ['none', 'arrow'],
+          edgeSymbolSize: [6, 5],
+          lineStyle: { color: 'rgba(99, 102, 241, 0.3)', curveness: 0.3 },
+          label: { show: true, fontSize: 11, color: '#e2e8f0' },
+          emphasis: {
+            focus: 'adjacency',
+            lineStyle: { width: 4 },
+            itemStyle: { shadowBlur: 20, shadowColor: 'rgba(99, 102, 241, 0.5)' },
+          },
+        }],
+      });
+    }
+
+    // Flow chart
+    if (flowChart) {
+      const hourMap: Record<string, number> = {};
+      msgs.forEach(msg => {
+        const d = new Date(msg.timestamp);
+        const hour = d.getHours();
+        hourMap[hour] = (hourMap[hour] || 0) + 1;
+      });
+      const hours = Array.from({ length: 24 }, (_, i) => `${i.toString().padStart(2, '0')}:00`);
+      const flowData = hours.map((_, i) => hourMap[i] || 0);
+
+      flowChart.setOption({
+        backgroundColor: 'transparent',
+        tooltip: {
+          trigger: 'axis',
+          backgroundColor: 'rgba(15, 23, 42, 0.95)',
+          borderColor: 'rgba(99, 102, 241, 0.3)',
+          textStyle: { color: '#e2e8f0', fontSize: 12 },
+          axisPointer: { type: 'shadow' },
+        },
+        grid: { left: 50, right: 20, top: 20, bottom: 30 },
+        xAxis: {
+          type: 'category',
+          data: hours,
+          axisLine: { lineStyle: { color: 'rgba(148, 163, 184, 0.2)' } },
+          axisLabel: { color: '#64748b', fontSize: 10 },
+          axisTick: { show: false },
+        },
+        yAxis: {
+          type: 'value',
+          axisLine: { show: false },
+          axisLabel: { color: '#64748b', fontSize: 10 },
+          splitLine: { lineStyle: { color: 'rgba(148, 163, 184, 0.1)' } },
+        },
+        series: [{
+          type: 'bar',
+          data: flowData.map((v, i) => ({
+            value: v,
+            itemStyle: {
+              color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                { offset: 0, color: v > 0 ? '#818cf8' : '#334155' },
+                { offset: 1, color: v > 0 ? '#6366f1' : '#1e293b' },
+              ]),
+              borderRadius: v > 0 ? [4, 4, 0, 0] : 0,
+            },
+          })),
+          barWidth: '60%',
+          animationDuration: 800,
+        }],
+      });
+    }
   };
 
   useEffect(() => {
-    updateChart(agents, messages);
+    updateCharts(agents, messages);
   }, [agents, messages]);
 
+  const onlineCount = agents.filter(a => a.status === 'online' || a.isConnected).length;
+  const todayMsgs = messages.filter(m => {
+    const d = new Date(m.timestamp);
+    const today = new Date();
+    return d.toDateString() === today.toDateString();
+  }).length;
+
   return (
-    <div className="p-6 h-screen flex flex-col">
-      <h2 className="text-2xl font-bold mb-4 text-primary">📊 通信可视化面板</h2>
-      
-      {/* Agent 状态卡片 */}
-      <div className="grid grid-cols-4 gap-4 mb-6">
-        <div className="bg-surface rounded-lg p-4">
-          <div className="text-sm text-gray-400">总 Agent 数</div>
-          <div className="text-3xl font-bold text-white">{agents.length}</div>
-        </div>
-        <div className="bg-surface rounded-lg p-4">
-          <div className="text-sm text-gray-400">在线 Agent</div>
-          <div className="text-3xl font-bold text-green-500">
-            {agents.filter(a => a.status === 'online').length}
-          </div>
-        </div>
-        <div className="bg-surface rounded-lg p-4">
-          <div className="text-sm text-gray-400">消息总数</div>
-          <div className="text-3xl font-bold text-blue-500">{messages.length}</div>
-        </div>
-        <div className="bg-surface rounded-lg p-4">
-          <div className="text-sm text-gray-400">今日消息</div>
-          <div className="text-3xl font-bold text-purple-500">
-            {messages.filter(m => {
-              const d = new Date(m.timestamp);
-              const today = new Date();
-              return d.toDateString() === today.toDateString();
-            }).length}
-          </div>
+    <div className="h-full overflow-y-auto p-6 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-bold text-gradient">📊 通信可视化</h2>
+          <p className="text-xs text-gray-500 mt-1">实时 Agent 通信拓扑与消息流量分析</p>
         </div>
       </div>
 
-      {/* 图表区域 */}
-      <div className="flex-1 grid grid-cols-3 gap-6">
-        <div className="col-span-2 bg-surface rounded-lg p-4" style={{ minHeight: 400 }}>
-          <h3 className="text-sm font-semibold mb-2 text-gray-400">Agent 通信拓扑图</h3>
-          <div ref={chartRef} style={{ width: '100%', height: 400 }} />
+      {/* Stats cards */}
+      <div className="grid grid-cols-4 gap-4">
+        {[
+          { label: 'Agent 总数', value: agents.length, icon: '🤖', gradient: 'from-indigo-500/20 to-blue-500/20' },
+          { label: '在线 Agent', value: onlineCount, icon: '🟢', gradient: 'from-emerald-500/20 to-green-500/20' },
+          { label: '消息总数', value: messages.length, icon: '💬', gradient: 'from-purple-500/20 to-pink-500/20' },
+          { label: '今日消息', value: todayMsgs, icon: '📈', gradient: 'from-amber-500/20 to-orange-500/20' },
+        ].map(card => (
+          <div key={card.label} className={`bg-gradient-to-br ${card.gradient} glass-card rounded-xl p-4 animate-fade-in`}>
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">{card.icon}</span>
+              <div>
+                <div className="text-xs text-gray-400">{card.label}</div>
+                <div className="text-2xl font-bold text-white">{card.value}</div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Charts */}
+      <div className="grid grid-cols-3 gap-4" style={{ minHeight: 0 }}>
+        <div className="col-span-2 glass-card rounded-xl p-4">
+          <h3 className="text-xs font-semibold text-gray-400 mb-3 uppercase tracking-wider">🕸️ Agent 通信拓扑</h3>
+          <div ref={graphRef} style={{ width: '100%', height: 380 }} />
         </div>
-        <div className="bg-surface rounded-lg p-4 overflow-y-auto">
-          <h3 className="text-sm font-semibold mb-2 text-gray-400">实时消息流</h3>
-          <div className="space-y-2">
-            {messages.slice(-20).reverse().map(msg => (
-              <div key={msg.id} className="text-xs p-2 bg-darker rounded">
-                <span className="text-primary font-medium">
+        <div className="glass-card rounded-xl p-4">
+          <h3 className="text-xs font-semibold text-gray-400 mb-3 uppercase tracking-wider">📈 24小时消息分布</h3>
+          <div ref={chartRef} style={{ width: '100%', height: 380 }} />
+        </div>
+      </div>
+
+      {/* Recent messages */}
+      <div className="glass-card rounded-xl p-4">
+        <h3 className="text-xs font-semibold text-gray-400 mb-3 uppercase tracking-wider">🔔 最近消息流</h3>
+        <div className="grid grid-cols-2 gap-3 max-h-48 overflow-y-auto">
+          {messages.slice(-20).reverse().map(msg => (
+            <div key={msg.id} className="text-xs p-3 bg-[#1e293b]/40 rounded-lg border border-indigo-500/5">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-indigo-400 font-medium">
                   {msg.sender?.name || msg.senderId}
                 </span>
-                {' → '}
-                <span className="text-secondary">
+                <span className="text-gray-600">→</span>
+                <span className="text-purple-400">
                   {msg.receiver?.name || 'All'}
                 </span>
-                <div className="text-gray-400 mt-1 truncate">{msg.content}</div>
-                <div className="text-gray-600 mt-1">
-                  {new Date(msg.timestamp).toLocaleTimeString()}
-                </div>
+                <span className="text-gray-600 ml-auto text-[10px]">
+                  {new Date(msg.timestamp).toLocaleTimeString('zh-CN')}
+                </span>
               </div>
-            ))}
-          </div>
+              <div className="text-gray-400 truncate">{msg.content}</div>
+            </div>
+          ))}
         </div>
       </div>
     </div>

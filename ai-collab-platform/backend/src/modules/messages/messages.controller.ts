@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import { Controller, Get, Post, Param, Query, Body } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { MessagesService } from './messages.service';
 
@@ -6,6 +6,12 @@ import { MessagesService } from './messages.service';
 @Controller('api/messages')
 export class MessagesController {
   constructor(private readonly messagesService: MessagesService) {}
+  
+  @Post()
+  @ApiOperation({ summary: '创建消息' })
+  create(@Body() data: { senderId: string; receiverId: string; content: string; msgType?: string; taskId?: string }) {
+    return this.messagesService.create(data);
+  }
   
   @Get('task/:taskId')
   @ApiOperation({ summary: '获取任务消息' })
