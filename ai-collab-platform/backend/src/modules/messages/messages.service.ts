@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class MessagesService {
@@ -8,21 +9,13 @@ export class MessagesService {
   async create(data: { senderId: string; receiverId: string; content: string; msgType?: string; taskId?: string }) {
     return this.prisma.message.create({
       data: {
-        id: this.generateUuid(),
+        id: uuidv4(),
         senderId: data.senderId,
         receiverId: data.receiverId,
         content: data.content,
         msgType: data.msgType || 'text',
         taskId: data.taskId || null,
       },
-    });
-  }
-  
-  private generateUuid(): string {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-      const r = (Math.random() * 16) | 0;
-      const v = c === 'x' ? r : (r & 0x3) | 0x8;
-      return v.toString(16);
     });
   }
   

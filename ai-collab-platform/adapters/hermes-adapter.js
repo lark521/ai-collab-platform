@@ -1,68 +1,188 @@
 #!/usr/bin/env node
 /**
  * Hermes Agent Adapter
- * 将 Hermes Agent 接入 AI Collab Platform
+ * Bridges Hermes Agent ↔ AI Collab Platform
  * 
- * 用法: node adapters/hermes-adapter.js [--agent-id <id>] [--agent-name <name>]
+ * 环境变量:
+ *   PLATFORM_URL  - 平台地址 (默认 http://localhost:3699)
+ *   ADAPTER_PORT  - 本地 HTTP 端口 (默认 3003)
+ *   AGENT_NAME    - Agent 名称 (默认 Hermes-Agent)
  */
 
 const { io } = require('socket.io-client');
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
 
-const PORT = process.env.ADAPTER_PORT || 3003;
-const PLATFORM_URL = process.env.PLATFORM_URL || 'http://localhost:3001';
+const PORT = parseInt(process.env.ADAPTER_PORT || '3003');
+const PLATFORM_URL = process.env.PLATFORM_URL || 'http://localhost:3699';
+const AGENT_NAME = process.env.AGENT_NAME || 'Hermes-Agent';
+const AGENT_TYPE = 'hermes';
+const LOG_PREFIX = 'Hermes';
 
-let agentId = process.argv.includes('--agent-id')
-  ? process.argv[process.argv.indexOf('--agent-id') + 1]
-  : null;
+const QUEUE_DIR = path.join(__dirname, 'queues');
+const AGENT_PREFIX = AGENT_NAME.replace(/\s+/g, '-');
+const REPLY_FILE = path.join(QUEUE_DIR, `${AGENT_PREFIX}-reply.json`);
+const PENDING_FILE = path.join(QUEUE_DIR, `${AGENT_PREFIX}-pending.json`);
+const CONSUME_LOCK = path.join(QUEUE_DIR, `${AGENT_PREFIX}-consume.lock`);
 
-let agentName = process.argv.includes('--agent-name')
-  ? process.argv[process.argv.indexOf('--agent-name') + 1]
-  : 'Hermes-Agent';
+if (!fs.existsSync(QUEUE_DIR)) {
+  fs.mkdirSync(QUEUE_DIR, { recursive: true });
+}
 
-const socket = io(`${PLATFORM_URL}/ws`, {
-  transports: ['websocket'],
-});
+let platformAgentId = null;
+let platformSocket = null;
+let isConnected = false;
 
-socket.on('connect', async () => {
-  console.log(`🔌 Connected to platform`);
+async function connectPlatform() {
+  const wsUrl = PLATFORM_URL.replace(/^https?:/, 'ws:');
   
-  if (!agentId) {
+  try {
     const res = await fetch(`${PLATFORM_URL}/api/agents`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: agentName, type: 'hermes' }),
+      body: JSON.stringify({ name: AGENT_NAME, type: AGENT_TYPE }),
     });
-    const data = await res.json();
-    agentId = data.id;
-    console.log(`✅ Registered Agent: ${agentName} (ID: ${agentId})`);
-  } else {
-    console.log(`🤖 Using existing Agent ID: ${agentId}`);
+    
+    if (res.ok) {
+      const data = await res.json();
+      platformAgentId = data.id;
+      console.log(`[${LOG_PREFIX}] ✅ Registered Agent: ${AGENT_NAME} (ID: ${platformAgentId})`);
+    } else {
+      // 无论是 409 Conflict 还是 500 (duplicate name), 都尝试查找已有 Agent
+      const errText = await res.text();
+      console.log(`[${LOG_PREFIX}] ⚠️ Register returned ${res.status}, searching for existing agent...`);
+      const agentsRes = await fetch(`${PLATFORM_URL}/api/agents`);
+      const agents = await agentsRes.json();
+      const existing = agents.find(a => a.name === AGENT_NAME);
+      if (existing) {
+        platformAgentId = existing.id;
+        console.log(`[${LOG_PREFIX}] ✅ Found existing Agent: ${AGENT_NAME} (ID: ${platformAgentId})`);
+      } else {
+        console.error(`[${LOG_PREFIX}] ❌ Could not find existing agent. Response: ${errText}`);
+        return;
+      }
+    }
+  } catch (err) {
+    console.error(`[${LOG_PREFIX}] ❌ Register error: ${err.message}`);
+    return;
   }
   
-  socket.emit('agent:register', { name: agentName, type: 'hermes' });
-});
+  platformSocket = io(wsUrl + '/ws', {
+    transports: ['websocket'],
+    query: { agentId: platformAgentId },
+    reconnection: true,
+    reconnectionDelay: 2000,
+    reconnectionAttempts: 20,
+  });
 
-socket.on('message:receive', (msg) => {
-  console.log(`📨 [${agentName}] Received: ${msg.content.substring(0, 100)}...`);
+  platformSocket.on('connect', () => {
+    console.log(`[${LOG_PREFIX}] 🔌 Connected to platform at ${PLATFORM_URL}`);
+    isConnected = true;
+    console.log(`[${LOG_PREFIX}] ✅ Connected and ready`);
+  });
+
+  platformSocket.on('message:receive', (msg) => {
+    // 检查是否是发给本 Agent 的消息
+    if (msg.receiverId !== platformAgentId) return;
+    handleMessage(msg);
+  });
+
+  platformSocket.on('message:new', (msg) => {
+    // 广播消息，检查是否是发给本 Agent 的
+    if (msg.receiverId === platformAgentId) {
+      handleMessage(msg);
+    }
+  });
+
+  function handleMessage(msg) {
+    const content = String(msg.content || '').substring(0, 500);
+    console.log(`[${LOG_PREFIX}] 📨 Received: "${content}"`);
+    
+    const queueData = {
+      messageId: msg.id || '',
+      senderId: msg.senderId || '*',
+      content: content,
+      msgType: msg.msgType || 'text',
+      taskId: msg.taskId || null,
+      timestamp: new Date().toISOString(),
+      agentName: AGENT_NAME,
+    };
+    
+    try {
+      fs.writeFileSync(PENDING_FILE, JSON.stringify(queueData));
+      console.log(`[${LOG_PREFIX}] 📝 Message queued for ${AGENT_NAME}`);
+    } catch (err) {
+      console.error(`[${LOG_PREFIX}] ❌ Queue write error: ${err.message}`);
+    }
+  }
+
+  // 定期检查新消息（作为 WebSocket 广播的备用方案）
+  messageCheckInterval = setInterval(async () => {
+    if (!isConnected) return;
+    try {
+      const res = await fetch(`${PLATFORM_URL}/api/messages/agent/${platformAgentId}?limit=1`);
+      if (res.ok) {
+        const messages = await res.json();
+        if (messages.length > 0) {
+          const latest = messages[0];
+          const lastMsgFile = path.join(QUEUE_DIR, `${AGENT_PREFIX}-last-msg.txt`);
+          let lastProcessed = '0';
+          try { lastProcessed = fs.readFileSync(lastMsgFile, 'utf-8').trim(); } catch(e) {}
+          if (latest.id !== lastProcessed) {
+            fs.writeFileSync(lastMsgFile, latest.id);
+            console.log(`[${LOG_PREFIX}] 📨 Poll detected new message: ${latest.content?.substring(0,50)}`);
+            handleMessage(latest);
+          }
+        }
+      }
+    } catch (err) {
+      console.error(`[${LOG_PREFIX}] Poll error: ${err.message}`);
+    }
+  }, 3000);
+
+  platformSocket.on('disconnect', () => {
+    console.log(`[${LOG_PREFIX}] ❌ Disconnected from platform`);
+    isConnected = false;
+  });
+
+  platformSocket.on('connect_error', (err) => {
+    console.error(`[${LOG_PREFIX}] ❌ Platform connection error: ${err.message}`);
+  });
+
+  platformSocket.on('agent:joined', (data) => {
+    console.log(`[${LOG_PREFIX}] 👥 New agent: ${data.name} (${data.type})`);
+  });
+}
+
+function checkReplyQueue() {
+  if (!fs.existsSync(REPLY_FILE)) return;
   
-  // 模拟 AI 回复（实际应调用 Hermes API）
-  setTimeout(() => {
-    const reply = `🦙 Hermes: 收到来自 ${msg.senderId} 的消息: "${msg.content.substring(0, 50)}"`;
-    socket.emit('message:send', {
-      to: msg.senderId,
-      content: reply,
-      msgType: 'response',
-      taskId: msg.taskId,
-    });
-    console.log(`📤 [${agentName}] Sent reply`);
-  }, 1500);
-});
+  try {
+    const lockExists = fs.existsSync(CONSUME_LOCK);
+    if (lockExists) return;
+    
+    fs.writeFileSync(CONSUME_LOCK, Date.now().toString());
+    
+    const data = JSON.parse(fs.readFileSync(REPLY_FILE, 'utf-8'));
+    
+    if (data.reply && platformSocket && platformSocket.connected) {
+      platformSocket.emit('message:send', {
+        to: data.replyTo || data.senderId || '*',
+        content: data.reply,
+        msgType: data.msgType || 'response',
+        taskId: data.taskId,
+      });
+      console.log(`[${LOG_PREFIX}] 📤 Reply sent to platform: "${String(data.reply).substring(0, 50)}"`);
+    }
+    
+    fs.unlinkSync(REPLY_FILE);
+    fs.unlinkSync(CONSUME_LOCK);
+  } catch (err) {
+    try { fs.unlinkSync(CONSUME_LOCK); } catch(e) {}
+  }
+}
 
-socket.on('disconnect', () => console.log('❌ Disconnected'));
-socket.on('connect_error', (err) => console.error('❌ Error:', err.message));
-
-// HTTP API 端点
 const server = http.createServer(async (req, res) => {
   res.setHeader('Content-Type', 'application/json');
   
@@ -72,12 +192,14 @@ const server = http.createServer(async (req, res) => {
     
     try {
       const data = JSON.parse(body);
-      socket.emit('message:send', {
-        to: data.to || '*',
-        content: data.content || data.message || 'Hello from Hermes!',
-        msgType: 'text',
-        taskId: data.taskId,
-      });
+      if (platformSocket && platformSocket.connected) {
+        platformSocket.emit('message:send', {
+          to: data.to || '*',
+          content: data.content || data.message || 'Hello from Hermes!',
+          msgType: data.msgType || 'text',
+          taskId: data.taskId,
+        });
+      }
       res.writeHead(200);
       res.end(JSON.stringify({ success: true }));
     } catch (e) {
@@ -86,13 +208,48 @@ const server = http.createServer(async (req, res) => {
     }
   } else if (req.method === 'GET' && req.url === '/health') {
     res.writeHead(200);
-    res.end(JSON.stringify({ status: 'ok', agentId, connected: socket.connected }));
+    res.end(JSON.stringify({
+      status: 'ok',
+      agentId: platformAgentId,
+      agentName: AGENT_NAME,
+      connected: isConnected,
+      port: PORT,
+      platformUrl: PLATFORM_URL,
+      queueDir: QUEUE_DIR,
+      timestamp: new Date().toISOString(),
+    }));
   } else {
     res.writeHead(404);
     res.end(JSON.stringify({ error: 'Not found' }));
   }
 });
 
-server.listen(PORT, () => {
-  console.log(`🚀 Hermes Adapter running on http://localhost:${PORT}`);
+console.log(`[${LOG_PREFIX}] 🚀 Starting adapter...`);
+console.log(`[${LOG_PREFIX}] 📡 Platform: ${PLATFORM_URL}`);
+console.log(`[${LOG_PREFIX}] 🤖 Agent: ${AGENT_NAME}`);
+console.log(`[${LOG_PREFIX}] 🔌 Local HTTP: http://localhost:${PORT}`);
+
+const queueInterval = setInterval(checkReplyQueue, 2000);
+let messageCheckInterval = null;
+
+connectPlatform();
+
+server.listen(PORT, '127.0.0.1', () => {
+  console.log(`[${LOG_PREFIX}] ✅ HTTP server running on port ${PORT}`);
+});
+
+process.on('SIGINT', () => {
+  console.log(`[${LOG_PREFIX}] Shutting down...`);
+  clearInterval(queueInterval);
+  if (messageCheckInterval) clearInterval(messageCheckInterval);
+  if (platformSocket) platformSocket.disconnect();
+  server.close(() => process.exit(0));
+});
+
+process.on('SIGTERM', () => {
+  console.log(`[${LOG_PREFIX}] Shutting down...`);
+  clearInterval(queueInterval);
+  if (messageCheckInterval) clearInterval(messageCheckInterval);
+  if (platformSocket) platformSocket.disconnect();
+  server.close(() => process.exit(0));
 });

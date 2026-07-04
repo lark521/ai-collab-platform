@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>中国行政区划五级树形图</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+  <header class="header">
+    <div class="header-content">
+      <h1>🇨🇳 中国行政区划</h1>
+      <p class="subtitle">五级行政区划树形浏览 — 省 · 市 · 县 · 镇 · 村</p>
+    </div>
+    <div class="search-box">
+      <input type="text" id="searchInput" placeholder="🔍 搜索行政区划名称..." autocomplete="off">
+      <div id="searchResults" class="search-results"></div>
+    </div>
+  </header>
+
+  <main class="main">
+    <div class="tree-container">
+      <div id="treeRoot" class="tree-root"></div>
+    </div>
+    <div class="stats-bar" id="statsBar">
+      <span id="statsText">加载中...</span>
+    </div>
+  </main>
+</div>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

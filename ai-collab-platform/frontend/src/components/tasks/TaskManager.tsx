@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { tasksApi, agentsApi } from '../../services/api';
+import { tasksApi, agentsApi, rolesApi } from '../../services/api';
 
 interface Task {
   id: string;
@@ -50,6 +50,7 @@ const PRIORITY_CONFIG: Record<string, { label: string; emoji: string }> = {
 export default function TaskManager() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [agents, setAgents] = useState<any[]>([]);
+  const [roles, setRoles] = useState<any[]>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [taskDetail, setTaskDetail] = useState<TaskDetail | null>(null);
@@ -62,8 +63,17 @@ export default function TaskManager() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    let mounted = true;
     loadTasks();
-    agentsApi.list().then((res: any) => setAgents(res.data || []));
+    agentsApi.list().then((res: any) => {
+      const data = Array.isArray(res.data) ? res.data : [];
+      if (mounted) setAgents(data);
+    }).catch(e => console.error('Failed to load agents:', e));
+    rolesApi.active().then((res: any) => {
+      const data = Array.isArray(res.data) ? res.data : [];
+      if (mounted) setRoles(data);
+    }).catch(e => console.error('Failed to load roles:', e));
+    return () => { mounted = false; };
   }, []);
 
   const loadTasks = async () => {
@@ -316,23 +326,22 @@ export default function TaskManager() {
                     <select
                       value={roleAgentId}
                       onChange={e => setRoleAgentId(e.target.value)}
-                      className="flex-1 px-3 py-2 bg-[#1e293b] border border-gray-700/50 rounded-lg text-xs text-white outline-none focus:border-indigo-500"
+                      className="flex-1 px-3 py-2 bg-[#1e293b] border border-gray-700/50 rounded-lg text-xs text-white outline-none focus:border-indigo-500 disabled:opacity-50"
+                      disabled={agents.length === 0}
                     >
-                      <option value="">选择 Agent...</option>
+                      <option value="">选择 Agent...{agents.length === 0 ? ' (加载中)' : ''}</option>
                       {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                     </select>
                     <select
                       value={roleName}
                       onChange={e => setRoleName(e.target.value)}
-                      className="flex-1 px-3 py-2 bg-[#1e293b] border border-gray-700/50 rounded-lg text-xs text-white outline-none focus:border-indigo-500"
+                      className="flex-1 px-3 py-2 bg-[#1e293b] border border-gray-700/50 rounded-lg text-xs text-white outline-none focus:border-indigo-500 disabled:opacity-50"
+                      disabled={roles.length === 0}
                     >
-                      <option value="">选择角色...</option>
-                      <option value="planner">策划</option>
-                      <option value="executor">执行</option>
-                      <option value="reviewer">审核</option>
-                      <option value="tester">测试</option>
+                      <option value="">选择角色...{roles.length === 0 ? ' (加载中)' : ''}</option>
+                      {roles.map(r => <option key={r.id} value={r.name}>{r.name} - {r.description || '无描述'}</option>)}
                     </select>
-                    <button onClick={assignRole} disabled={!roleAgentId || !roleName} className="px-4 py-2 bg-indigo-500 text-white text-xs rounded-lg hover:bg-indigo-400 transition disabled:opacity-30">
+                    <button onClick={assignRole} disabled={!roleAgentId || !roleName || agents.length === 0 || roles.length === 0} className="px-4 py-2 bg-indigo-500 text-white text-xs rounded-lg hover:bg-indigo-400 transition disabled:opacity-30">
                       分配
                     </button>
                   </div>

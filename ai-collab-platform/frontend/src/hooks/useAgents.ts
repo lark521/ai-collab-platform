@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { agentsApi } from '../services/api';
 import api from '../services/api';
 
@@ -23,21 +23,24 @@ export const useAgents = () => {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [regenerating, setRegenerating] = useState<string | null>(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    fetchAgents();
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const fetchAgents = async () => {
     try {
       const res = await agentsApi.list();
-      setAgents(res.data);
+      if (mountedRef.current) setAgents(res.data);
     } catch (e) {
       console.error('Failed to fetch agents:', e);
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   };
-
-  useEffect(() => {
-    fetchAgents();
-  }, []);
 
   const addAgent = async (data: AgentFormData) => {
     try {

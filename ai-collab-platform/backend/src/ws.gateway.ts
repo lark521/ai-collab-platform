@@ -141,10 +141,15 @@ export class WsGateway implements OnGatewayConnection, OnGatewayDisconnect {
     if (data.to === '*') {
       this.server.emit('message:new', message);
     } else {
-      // 发送给特定 Agent
-      this.server.to(data.to).emit('message:receive', message);
-      // 同时广播给所有客户端用于可视化
-      this.server.emit('message:new', message);
+      // 发送给特定 Agent 的房间
+      const rooms = this.server.sockets.adapter.rooms;
+      const roomMembers = rooms.get(data.to);
+      if (roomMembers && roomMembers.size > 0) {
+        this.server.to(data.to).emit('message:receive', message);
+      } else {
+        // 房间不存在（远程 Agent 无法 join），广播给所有客户端
+        this.server.emit('message:new', message);
+      }
     }
     
     return { success: true, messageId: message.id };

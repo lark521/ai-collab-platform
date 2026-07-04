@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class AuditService {
@@ -8,7 +9,7 @@ export class AuditService {
   async log(taskId: string, agentId: string, action: string, detail: string, metadata?: any) {
     return this.prisma.auditLog.create({
       data: {
-        id: require('uuid')(),
+        id: uuidv4(),
         taskId,
         agentId,
         action,

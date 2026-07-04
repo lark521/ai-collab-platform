@@ -6,6 +6,7 @@ import { TasksModule } from './modules/tasks/tasks.module';
 import { MessagesModule } from './modules/messages/messages.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { RemoteConnectionModule } from './modules/remote-connection/remote-connection.module';
+import { RolesModule } from './modules/roles/roles.module';
 import { WsGateway } from './ws.gateway';
 
 @Module({
@@ -16,6 +17,7 @@ import { WsGateway } from './ws.gateway';
     MessagesModule,
     AuditModule,
     RemoteConnectionModule,
+    RolesModule,
   ],
   providers: [PrismaService, WsGateway],
 })

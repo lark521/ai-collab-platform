@@ -1,0 +1,40 @@
+{
+  "apps": [
+    {
+      "name": "openclaw-adapter",
+      "script": "adapters/openclaw-adapter.js",
+      "cwd": "/home/shaohua/.openclaw/workspace/ai-collab-platform",
+      "instances": 1,
+      "exec_mode": "fork",
+      "env": {
+        "PLATFORM_URL": "http://localhost:3699",
+        "ADAPTER_PORT": 3002,
+        "AGENT_NAME": "OpenClaw-Agent"
+      },
+      "watch": false,
+      "ignore_watch": ["node_modules", "queues", ".git"],
+      "max_memory_restart": "500M",
+      "error_file": "adapters/logs/openclaw-error.log",
+      "out_file": "adapters/logs/openclaw-out.log",
+      "merge_logs": true
+    },
+    {
+      "name": "hermes-adapter",
+      "script": "adapters/hermes-adapter.js",
+      "cwd": "/home/shaohua/.openclaw/workspace/ai-collab-platform",
+      "instances": 1,
+      "exec_mode": "fork",
+      "env": {
+        "PLATFORM_URL": "http://localhost:3699",
+        "ADAPTER_PORT": 3003,
+        "AGENT_NAME": "Hermes-Agent"
+      },
+      "watch": false,
+      "ignore_watch": ["node_modules", "queues", ".git"],
+      "max_memory_restart": "500M",
+      "error_file": "adapters/logs/hermes-error.log",
+      "out_file": "adapters/logs/hermes-out.log",
+      "merge_logs": true
+    }
+  ]
+}

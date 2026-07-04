@@ -23,25 +23,33 @@ export class TasksService {
   }
   
   async findAll(params: { status?: string; page?: number; size?: number }) {
-    const { status, page = 1, size = 20 } = params;
+    const status = params.status;
+    const page = Number(params.page) || 1;
+    const size = Number(params.size) || 20;
     const where: any = {};
     if (status) where.status = status;
     
-    const [tasks, total] = await Promise.all([
-      this.prisma.task.findMany({
-        where,
-        skip: (page - 1) * size,
-        take: size,
-        orderBy: { createdAt: 'desc' },
-        include: {
-          taskRoles: { include: { agent: true } },
-          _count: { select: { messages: true, auditLogs: true } },
-        },
-      }),
-      this.prisma.task.count({ where }),
-    ]);
+    const tasks = await this.prisma.task.findMany({
+      where,
+      skip: (page - 1) * size,
+      take: size,
+      orderBy: { createdAt: 'desc' },
+    });
     
-    return { tasks, total, page, size };
+    const total = await this.prisma.task.count({ where });
+    
+    // 手动加载 taskRoles
+    const tasksWithRoles = await Promise.all(
+      tasks.map(async (task) => {
+        const taskRoles = await this.prisma.taskRole.findMany({
+          where: { taskId: task.id },
+          include: { agent: true },
+        });
+        return { ...task, taskRoles };
+      })
+    );
+    
+    return { tasks: tasksWithRoles, total, page, size };
   }
   
   async findOne(id: string) {
@@ -68,14 +76,36 @@ export class TasksService {
   
   // 分配角色
   async assignRole(data: AssignRoleDto) {
-    return this.prisma.taskRole.create({
-      data: {
-        taskId: data.taskId,
-        agentId: data.agentId,
-        roleName: data.roleName,
-      },
-      include: { agent: true },
-    });
+    // 查找匹配的活跃角色
+    let roleId: string | undefined;
+    if (data.roleName) {
+      const role = await this.prisma.role.findFirst({
+        where: { name: data.roleName, isActive: true },
+        select: { id: true },
+      });
+      roleId = role?.id;
+    }
+    
+    try {
+      return this.prisma.taskRole.create({
+        data: {
+          taskId: data.taskId,
+          agentId: data.agentId,
+          roleName: data.roleName,
+          roleId: roleId || null,
+        },
+        include: { agent: true },
+      });
+    } catch (err: any) {
+      // 处理唯一约束冲突（同一 agent 已在该任务中）
+      if (err.code === 'P2002') {
+        return this.prisma.taskRole.findFirst({
+          where: { taskId: data.taskId, agentId: data.agentId },
+          include: { agent: true },
+        });
+      }
+      throw err;
+    }
   }
   
   // 移除角色
@@ -135,10 +165,12 @@ export class TasksService {
     // 统计各 Agent 的消息数量
     const agentStats: Record<string, any> = {};
     task.messages.forEach(msg => {
-      if (!agentStats[msg.senderId]) {
-        agentStats[msg.senderId] = { count: 0, name: '' };
+      if (msg.senderId) {
+        if (!agentStats[msg.senderId]) {
+          agentStats[msg.senderId] = { count: 0, name: '' };
+        }
+        agentStats[msg.senderId].count++;
       }
-      agentStats[msg.senderId].count++;
     });
     
     // 各角色 Agent 的贡献
@@ -156,8 +188,15 @@ export class TasksService {
       priority: task.priority,
       createdAt: task.createdAt,
       completedAt: task.completedAt,
-      duration: task.createdAt && task.completedAt 
-        ? `${Math.floor((task.completedAt.getTime() - task.createdAt.getTime()) / 1000)}s` 
+      duration: task.createdAt && task.completedAt
+        ? (() => {
+            const seconds = Math.floor((task.completedAt.getTime() - task.createdAt.getTime()) / 1000);
+            if (seconds < 60) return `${seconds}s`;
+            if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+            const hours = Math.floor(seconds / 3600);
+            const mins = Math.floor((seconds % 3600) / 60);
+            return `${hours}h ${mins}m`;
+          })()
         : null,
       roles: roleContributions,
       totalMessages: task.messages.length,

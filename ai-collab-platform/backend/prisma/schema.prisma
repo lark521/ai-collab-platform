@@ -55,16 +55,36 @@ model Task {
   @@map("tasks")
 }
 
+// 角色定义表
+model Role {
+  id            String   @id @default(uuid())
+  name          String   @unique
+  description   String   @default("")
+  promptTemplate String  @default("")
+  reportTo      String?  // 汇报对象角色名称
+  responsibilities String @default("")
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  // Relations
+  taskRoles     TaskRole[]
+  
+  @@map("roles")
+}
+
 // 任务-角色分配
 model TaskRole {
   id         String   @id @default(uuid())
   taskId     String
   agentId    String
-  roleName   String   // 'planner', 'executor', 'reviewer', 'tester'
+  roleId     String?
+  roleName   String   // 兼容字段，保留原有 roleName
   assignedAt DateTime @default(now())
   
   task  Task  @relation(fields: [taskId], references: [id], onDelete: Cascade)
   agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  role  Role? @relation(fields: [roleId], references: [id], onDelete: SetNull)
   
   @@unique([taskId, agentId])
   @@map("task_roles")
@@ -74,7 +94,7 @@ model TaskRole {
 model Message {
   id           String   @id @default(uuid())
   taskId       String?
-  senderId     String
+  senderId     String?
   receiverId   String?
   content      String
   msgType      String   @default("text") // text/system/command/response/error
@@ -82,8 +102,8 @@ model Message {
   timestamp    DateTime @default(now())
   
   task   Task?   @relation(fields: [taskId], references: [id], onDelete: SetNull)
-  sender Agent   @relation("MessageSender", fields: [senderId], references: [id])
-  receiver Agent? @relation("MessageReceiver", fields: [receiverId], references: [id])
+  sender Agent?   @relation("MessageSender", fields: [senderId], references: [id], onDelete: SetNull)
+  receiver Agent? @relation("MessageReceiver", fields: [receiverId], references: [id], onDelete: SetNull)
   
   @@index([taskId, timestamp])
   @@index([senderId, timestamp])
@@ -101,7 +121,7 @@ model AuditLog {
   timestamp DateTime @default(now())
   
   task  Task? @relation(fields: [taskId], references: [id], onDelete: SetNull)
-  agent Agent @relation(fields: [agentId], references: [id])
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: SetNull)
   
   @@index([taskId, timestamp])
   @@index([agentId, timestamp])

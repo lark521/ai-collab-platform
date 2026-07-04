@@ -4,13 +4,15 @@ import TaskManager from '../tasks/TaskManager';
 import VisualizationView from '../visualization/VizView';
 import ReportView from './ReportView';
 import AgentManagement from '../agents/AgentManagement';
+import RoleManager from '../roles/RoleManager';
 
-type Tab = 'chat' | 'tasks' | 'agents' | 'viz' | 'report';
+type Tab = 'chat' | 'tasks' | 'agents' | 'roles' | 'viz' | 'report';
 
 const TABS: { key: Tab; label: string; icon: string; desc: string }[] = [
   { key: 'chat', label: '通信', icon: '💬', desc: '实时消息' },
   { key: 'tasks', label: '任务', icon: '📋', desc: '任务管理' },
   { key: 'agents', label: 'Agent', icon: '🤖', desc: '节点管理' },
+  { key: 'roles', label: '角色', icon: '🎭', desc: '角色配置' },
   { key: 'viz', label: '可视化', icon: '📊', desc: '拓扑分析' },
   { key: 'report', label: '报告', icon: '📝', desc: '结果报告' },
 ];
@@ -92,6 +94,7 @@ export default function Dashboard() {
           {activeTab === 'chat' && <ChatView />}
           {activeTab === 'tasks' && <TaskManager />}
           {activeTab === 'agents' && <AgentManagement />}
+          {activeTab === 'roles' && <RoleManager />}
           {activeTab === 'viz' && <VisualizationView />}
           {activeTab === 'report' && <ReportView />}
         </div>

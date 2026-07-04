@@ -1,28 +1,14 @@
 import {
-  Controller, Get, Post, Put, Delete, Patch, Body, Param, Query, Headers, HttpCode, HttpStatus, UseGuards,
+  Controller, Get, Post, Put, Delete, Patch, Body, Param, Query, Headers, HttpCode, HttpStatus,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiHeader, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiHeader } from '@nestjs/swagger';
 import { RemoteConnectionService } from './remote-connection.service';
 import { PrismaService } from '../../prisma/prisma.service';
-import { v4 as uuidv4 } from 'uuid';
-import * as crypto from 'crypto';
 
 /**
- * 远程连接守卫 — 验证 API Key
+ * 远程连接控制器 — 提供 Agent 远程接入的 REST API
+ * 注意：RemoteAuthGuard 类已废弃，鉴权由各个端点手动调用 validateApiKey 完成
  */
-class RemoteAuthGuard {
-  constructor(private service: RemoteConnectionService, private prisma: PrismaService) {}
-
-  async canActivate(req: any, headers: any): Promise<boolean> {
-    const agentId = headers['x-agent-id'] || headers['agent-id'];
-    const apiKey = headers['x-api-key'] || headers['api-key'];
-
-    if (!agentId || !apiKey) return false;
-
-    return this.service.validateApiKey(agentId, apiKey);
-  }
-}
-
 @ApiTags('remote')
 @Controller('api/remote')
 export class RemoteConnectionController {
@@ -171,6 +157,19 @@ export class RemoteConnectionController {
       status: valid ? 'authorized' : 'unauthorized',
       agent,
       timestamp: new Date().toISOString(),
+    };
+  }
+
+  // ==================== 公开的平台健康检查 ====================
+
+  @Get('health')
+  @ApiOperation({ summary: '平台健康检查（含版本信息，供 Adapter 轮询）' })
+  async platformHealth() {
+    return {
+      status: 'ok',
+      version: '1.0.0',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
     };
   }
 }

@@ -38,8 +38,15 @@ export class AgentsService {
   }
   
   async remove(id: string) {
-    await this.prisma.agent.delete({ where: { id } });
-    return { success: true };
+    try {
+      await this.prisma.agent.delete({ where: { id } });
+      return { success: true };
+    } catch (err: any) {
+      if (err.code === 'P2025') {
+        throw new Error('Agent not found');
+      }
+      throw new Error(`Failed to delete agent: ${err.message}`);
+    }
   }
   
   async getOnlineAgents() {
