@@ -1,0 +1,92 @@
+version: '3.8'
+
+services:
+  # PostgreSQL 数据库
+  db:
+    image: postgres:16-alpine
+    container_name: ai-collab-db
+    environment:
+      POSTGRES_DB: aicollab
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Redis 缓存
+  redis:
+    image: redis:7-alpine
+    container_name: ai-collab-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  # 后端服务
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-collab-backend
+    ports:
+      - "3699:3699"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/aicollab
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      PORT: 3699
+      NODE_ENV: production
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  # 前端服务（Nginx）
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-collab-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+  # OpenClaw Agent 适配器（可选）
+  openclaw-adapter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-collab-openclaw
+    environment:
+      PLATFORM_URL: http://backend:3699
+      ADAPTER_PORT: 3002
+      AGENT_NAME: OpenClaw-Agent
+    depends_on:
+      - backend
+    profiles: ["adapters"]
+
+  # Hermes Agent 适配器（可选）
+  hermes-adapter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-collab-hermes
+    environment:
+      PLATFORM_URL: http://backend:3699
+      ADAPTER_PORT: 3003
+      AGENT_NAME: Hermes-Agent
+    depends_on:
+      - backend
+    profiles: ["adapters"]
+
+volumes:
+  postgres_data:
+  redis_data:
