@@ -1,0 +1,125 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Agent 注册表
+model Agent {
+  id           String    @id @default(uuid())
+  name         String    @unique
+  type         String    // 'openclaw', 'hermes', 'custom'
+  adapterType  String    @default("websocket")
+  config       Json?     // 适配器配置
+  status       String    @default("offline") // online/offline/error
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  
+  // 远程连接字段
+  remoteUrl    String?   // 远程 Agent 的 WebSocket/HTTP 地址
+  apiKey       String?   @unique  // 远程连接认证密钥
+  isConnected  Boolean   @default(false) // 是否已建立远程连接
+  lastHeartbeat DateTime? // 最后心跳时间
+  
+  // Relations
+  sentMessages  Message[]  @relation("MessageSender")
+  receivedMessages Message[]  @relation("MessageReceiver")
+  taskRoles     TaskRole[]
+  auditLogs     AuditLog[]
+  
+  @@map("agents")
+}
+
+// 任务表
+model Task {
+  id          String      @id @default(uuid())
+  title       String
+  description String?
+  status      String      @default("pending") // pending/running/completed/failed
+  priority    String      @default("normal")  // low/normal/high/urgent
+  createdBy   String?     // creator agent id
+  deadline    DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  completedAt DateTime?
+  
+  // Relations
+  taskRoles   TaskRole[]
+  messages    Message[]
+  auditLogs   AuditLog[]
+  testResults TestResult[]
+  
+  @@map("tasks")
+}
+
+// 任务-角色分配
+model TaskRole {
+  id         String   @id @default(uuid())
+  taskId     String
+  agentId    String
+  roleName   String   // 'planner', 'executor', 'reviewer', 'tester'
+  assignedAt DateTime @default(now())
+  
+  task  Task  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  agent Agent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  
+  @@unique([taskId, agentId])
+  @@map("task_roles")
+}
+
+// 消息表
+model Message {
+  id           String   @id @default(uuid())
+  taskId       String?
+  senderId     String
+  receiverId   String?
+  content      String
+  msgType      String   @default("text") // text/system/command/response/error
+  metadata     Json?
+  timestamp    DateTime @default(now())
+  
+  task   Task?   @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  sender Agent   @relation("MessageSender", fields: [senderId], references: [id])
+  receiver Agent? @relation("MessageReceiver", fields: [receiverId], references: [id])
+  
+  @@index([taskId, timestamp])
+  @@index([senderId, timestamp])
+  @@map("messages")
+}
+
+// 审计日志
+model AuditLog {
+  id        String   @id @default(uuid())
+  taskId    String?
+  agentId   String
+  action    String   // create/update/assign/execute/review/test
+  detail    String
+  metadata  Json?
+  timestamp DateTime @default(now())
+  
+  task  Task? @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  agent Agent @relation(fields: [agentId], references: [id])
+  
+  @@index([taskId, timestamp])
+  @@index([agentId, timestamp])
+  @@map("audit_logs")
+}
+
+// 测试结果
+model TestResult {
+  id         String   @id @default(uuid())
+  taskId     String
+  testCase   String
+  passed     Boolean
+  detail     String?
+  metadata   Json?
+  timestamp  DateTime @default(now())
+  
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  
+  @@index([taskId, timestamp])
+  @@map("test_results")
+}
