@@ -85,7 +85,7 @@ export default function Dashboard() {
             </span>
           </div>
           <div className="ml-auto flex items-center gap-3">
-            <span className="text-xs text-gray-500">AI Collab Platform v1.0</span>
+            <span className="text-xs text-gray-500">AI Collab Platform v1.1</span>
           </div>
         </div>
 

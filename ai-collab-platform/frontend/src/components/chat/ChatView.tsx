@@ -31,11 +31,11 @@ const TYPE_LABELS: Record<string, string> = {
 
 export default function ChatView() {
   const socket = useSocket();
+  const [connected, setConnected] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState<string>('');
   const [inputText, setInputText] = useState('');
-  const [connected, setConnected] = useState(socket.connected);
   const [showRegister, setShowRegister] = useState(false);
   const [newAgentName, setNewAgentName] = useState('');
   const [newAgentType, setNewAgentType] = useState('openclaw');
@@ -55,6 +55,7 @@ export default function ChatView() {
   useEffect(() => {
     loadAgents();
     loadMessages();
+    setConnected(socket.connected);
     socket.on('connect', () => setConnected(true));
     socket.on('disconnect', () => setConnected(false));
     socket.on('message:new', (msg: Message) => {
